@@ -1,0 +1,30 @@
+# Conda environment
+env/
+envs/
+.conda/
+.condarc
+.conda_env
+.conda_lock
+.conda-meta/
+*.conda
+*.condarc
+
+# Virtual environment
+venv/
+__pycache__/
+*.pyc
+
+# Log files
+logs/
+*.log
+
+# Data files
+data/*.json
+data/*.mcap
+
+# Configuration files
+config/*.json
+
+# System files
+.DS_Store
+Thumbs.db
