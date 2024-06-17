@@ -21,6 +21,7 @@ logs/
 # Data files
 data/*.json
 data/*.mcap
+data/
 
 # Configuration files
 config/*.json
