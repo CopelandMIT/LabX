@@ -1,42 +1,45 @@
-# camera_publisher.py
 import cv2
 import zmq
 import base64
-import numpy as np
+import time
 
-usb_camera_port_number = 0
+class CameraPublisher:
+    def __init__(self, usb_camera_port_number, zmq_port, duration):
+        self.usb_camera_port_number = usb_camera_port_number
+        self.zmq_port = zmq_port
+        self.duration = duration
+        self.running = True
 
-print(usb_camera_port_number)
+        self.context = zmq.Context()
+        self.socket = self.context.socket(zmq.PUB)
+        self.socket.bind(f"tcp://*:{self.zmq_port}")
 
-context = zmq.Context()
-socket = context.socket(zmq.PUB)
-socket.bind("tcp://*:5555")
+        self.cap = cv2.VideoCapture(self.usb_camera_port_number)
 
-# Capture Video Data from USB Webcam
-cap = cv2.VideoCapture(usb_camera_port_number)
+    def start_publishing(self):
+        print(f"Camera publisher running on port {self.zmq_port} for {self.duration} seconds")
+        count = 1
+        start_time = time.time()
+        while self.running and (time.time() - start_time) < self.duration:
+            ret, frame = self.cap.read()
+            if not ret:
+                print(f"Camera not found at port {self.usb_camera_port_number}")
+                break
 
-print("Running")
+            # Encode the frame as a JPEG image
+            _, buffer = cv2.imencode('.jpg', frame)
+            jpg_as_text = base64.b64encode(buffer).decode('utf-8')
+            
+            # Publish the encoded frame
+            self.socket.send_string(jpg_as_text)
 
-while True:
-    ret, frame = cap.read()
-    if not ret:
-        print(f"Camera not found at {usb_camera_port_number}")                
-        break
+            print(f"Frame {count} sent.")
+            count += 1
 
-    print("Found USB camera")
+        self.stop()
 
-    #encode the frame as a JPEG image
-    _, buffer = cv2.imencode('.jpg', frame)
-    jpg_as_text = base64.b64encode(buffer).decode('utf-8')
-    
-    #Publish the encoded frame
-    socket.send_string(jpg_as_text)
-
-    #disply the frame locally
-    cv2.imshow('Publisher', frame)
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
-
-# realease the capture and close the windows
-cap.release()
-cv2.destroyAllWindows()
+    def stop(self):
+        self.running = False
+        self.cap.release()
+        cv2.destroyAllWindows()
+        print("Camera publisher stopped.")
