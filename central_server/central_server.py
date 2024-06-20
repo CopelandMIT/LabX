@@ -1,24 +1,22 @@
 import zmq
 import time
 import threading
+import cv2
+import numpy as np
 
-
+# CentralServer class
 class CentralServer:
-    def __init__(self, ip="localhost", port=5555):
+    def __init__(self, port=5555):
         self.context = zmq.Context()
         self.socket = self.context.socket(zmq.PUB)
-        self.socket.bind(f"tcp://{ip}:{port}")
-        self.client_nodes = []  # List to store connected camera nodes (optional)
+        self.port = port
 
     def start(self):
-        print("Central server started")
+        self.socket.bind(f"tcp://*:{self.port}")
+        print(f"Central server started on port {self.port}")
 
-    def send_start_signal(self, future_seconds=0):
-        # Send a JSON message with "command" and "timestamp" keys
-        message = {"command": "START", "timestamp": time.time() + future_seconds}
-        self.socket.send_json(message)
-        print(f"Sent start signal to connected nodes (future seconds: {future_seconds})")
-
-    def register_client_node(self, camera_node):
-        # Add camera node to the list (optional)
-        self.client_nodes.append(camera_node)
+    def send_start_signal(self, duration=30, delay_start_seconds=10, sensor_id = "01"):
+        # Calculate the future timestamp
+        future_timestamp = time.time() + delay_start_seconds
+        self.socket.send_json({"command": "START", "timestamp": future_timestamp, "sensor_id": sensor_id, "duration": duration})
+        print(f"Sent start signal with timestamp {future_timestamp}")
