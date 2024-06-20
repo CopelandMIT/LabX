@@ -10,7 +10,7 @@ envs/
 *.condarc
 
 # Virtual environment
-venv/
+labx_env/
 __pycache__/
 *.pyc
 

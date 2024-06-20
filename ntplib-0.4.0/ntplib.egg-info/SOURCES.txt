@@ -1,0 +1,11 @@
+CHANGELOG
+LICENSE
+MANIFEST.in
+README.md
+ntplib.py
+setup.cfg
+setup.py
+ntplib.egg-info/PKG-INFO
+ntplib.egg-info/SOURCES.txt
+ntplib.egg-info/dependency_links.txt
+ntplib.egg-info/top_level.txt
