@@ -2,17 +2,18 @@ import zmq
 import time
 import cv2
 import threading
+import json
 
 class CameraNode:
     def __init__(self, central_server_ip, 
                 central_server_sub_port=5555, 
-                central_server_req_port=5566):
+                central_server_router_port=5566):
         self.central_server_ip = central_server_ip
         self.sub_port = central_server_sub_port
-        self.req_port = central_server_req_port
+        self.router_port = central_server_router_port
 
         self.sub_address = f"tcp://{self.central_server_ip}:{self.sub_port}"
-        self.req_address = f"tcp://{self.central_server_ip}:{self.req_port}"
+        self.router_address = f"tcp://{self.central_server_ip}:{self.router_port}"
         
         self.context = zmq.Context()
         
@@ -20,37 +21,55 @@ class CameraNode:
         self.sub_socket.connect(self.sub_address)
         self.sub_socket.setsockopt_string(zmq.SUBSCRIBE, '')
 
-        self.req_socket = self.context.socket(zmq.REQ)
-        self.req_socket.connect(self.req_address)
+        self.router_socket = self.context.socket(zmq.DEALER)
+        self.router_socket.setsocketopt(zmq.IDENTITY, b"001")
+        self.router_socket.connect(self.router_address)
 
         print("Connected to central server")
+        self.running = True
 
             
     def listen_for_start_command(self):
         while True:
             message = self.sub_socket.recv_json()
-            if message["command"] == "START":
+            message_data = json.loads(message)
+            if message["command"] == "CONFIRM_CONNECTION":
+                self.send_status("Ready")
+            elif message["command"] == "START_RECORDING":
                 # Acknowledge the receipt of the START command
-                self.acknowledge_command(sensor_id=message['sensor_id'])
-
+                self.acknowledge_command(message_data)
                 # Proceed to start data collection as per the command details
                 self.start_data_collection(
                     delayed_start_timestamp=message["delayed_start_timestamp"], 
-                    sensor_id=message['sensor_id'],
+                    sensor_deployment_id=message['sensor_deployment_id'],
                     duration=message['duration'],
+                    filename=message_data['filename'],
                     additional_info=message['additional_info'])
-                break
+            elif message_data["command"] == "STATUS_UPDATE":
+                self.send_status("Recording")
+            elif message_data["command"] == "STOP_RECORDING":
+                self.send_status("Completed")
+                self.running = False
+                
 
-    def acknowledge_command(self, sensor_id):
+    def send_status(self, status):
+        try: 
+            self.router_socket.send_json({
+                "status":status
+            })
+        except Exception as e:
+            print(f"Failed to send status: {e}")
+
+    def acknowledge_command(self, sensor_deployment_id):
         try:
             # Send an acknowledgment message to the central server
-            self.req_socket.send_json({
+            self.router_socket.send_json({
                 "status": "ACK",
-                "sensor_id": sensor_id,
+                "sensor_deployment_id": sensor_deployment_id,
                 "message": "Command received and processed."
             })
             # Wait for the server's reply to ensure the message was received
-            response = self.req_socket.recv_json()
+            response = self.router_socket.recv_json()
             print(f"Acknowledgment sent and confirmed by server: {response['status']}")
         except Exception as e:
             print(f"Failed to send acknowledgment: {e}")

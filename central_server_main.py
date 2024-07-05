@@ -7,14 +7,8 @@ def run_server():
     server = CentralServer(pub_port=5555, rep_port=5566)
     
     # Start the server
-    server.start()
+    server.run()
     
-    # Wait a bit before sending the start signal to ensure nodes are listening
-    time.sleep(2)
-    
-    # Send a start signal to all connected camera nodes
-    server.send_start_signal(duration=10, delay_start_seconds=10, sensor_id="01", additional_info="Test run")
-
 if __name__ == "__main__":
     # Run the server in its own thread to allow asynchronous operations
     server_thread = threading.Thread(target=run_server)
