@@ -41,8 +41,12 @@ class CameraClientMQTT:
 
     def on_message(self, client, userdata, msg):
         # confirm_connection logic
+        if msg.topic == str(f"to_sensor/{self.deployed_sensor_id}/commands/confirm_connection"):
+            print(f"Central Server to {self.deployed_sensor_id} connection confrimed!")
+            self.client.publish(f"to_central_server/{self.deployed_sensor_id}/status/confirm_connection", str({self.deployed_sensor_id}), qos=2)
         # start_recording logic
-        if msg.topic == "to_sensor/global/commands/start_recording" or f"to_sensor/{self.deployed_sensor_id}/commands/confirm_connection":
+        elif msg.topic == "to_sensor/global/commands/start_recording" or \
+            msg.topic == str(f"to_sensor/{self.deployed_sensor_id}/commands/start_recording"):
             print(f"Recieved message on {msg.topic}: {msg.payload.decode()}")
             print("Recording Started")
         # status_update_request logic
@@ -55,7 +59,6 @@ class CameraClientMQTT:
         for topic in topics:
             self.client.subscribe(topic=topic)
             print(f"{self.client_id} is subscribed to {topic}")
-
 
 def main():
     stop_event = threading.Event()
