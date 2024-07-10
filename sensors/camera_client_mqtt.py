@@ -9,6 +9,7 @@ class CameraClientMQTT:
         self.port = port
         self.broker_address = broker_address
         self.client_id = client_id
+        self.deployed_sensor_id = client_id
         self.client = None
 
 
@@ -29,13 +30,24 @@ class CameraClientMQTT:
     def on_connect(self, client, userdata, flags, rc):
         if rc == 0:
             print(f"{self.client_id} is connected to broker!")
-            self.subscribe_to_topics("commands")
+            self.subscribe_to_topics(["to_sensor/global/commands/start_recording",
+                                      "to_sensor/global/commands/stop_recording",
+                                      f"to_sensor/{self.deployed_sensor_id}/commands/confirm_connection",
+                                      f"to_sensor/{self.deployed_sensor_id}/commands/start_recording",
+                                      f"to_sensor/{self.deployed_sensor_id}/commands/stop_recording",
+                                      f"to_sensor/{self.deployed_sensor_id}/commands/status_update_request"])
         else:
             print(f"{self.client} unable to connect to broker with return code: {rc}")
 
     def on_message(self, client, userdata, msg):
-        if msg.topic == "commands":
+        # confirm_connection logic
+        # start_recording logic
+        if msg.topic == "to_sensor/global/commands/start_recording" or f"to_sensor/{self.deployed_sensor_id}/commands/confirm_connection":
             print(f"Recieved message on {msg.topic}: {msg.payload.decode()}")
+            print("Recording Started")
+        # status_update_request logic
+        # stop_recording logic
+
     
     def subscribe_to_topics(self, topics):
         if isinstance(topics, str):
@@ -47,7 +59,7 @@ class CameraClientMQTT:
 
 def main():
     stop_event = threading.Event()
-    mqtt_client = CameraClientMQTT(client_id="001")
+    mqtt_client = CameraClientMQTT(client_id="0001")
     mqtt_client_thread = threading.Thread(target=mqtt_client.handle_mqtt_operations, args=(stop_event,))
     mqtt_client_thread.start()
 
