@@ -19,19 +19,18 @@ class CentralServer:
         self.running = True
         self.sensor_statuses = {"001": "Offline"}
         self.receive_thread = None
-        self.initialize()
-
-    def initialize(self):
-        """Run startup configuration tasks."""
-        # Confirm connections with sensor nodes
-        time.sleep(1)
-        self.send_command("CONFIRM_CONNECTION")
-        print("Start-up configuration complete.")
         
         # Run receive thread
         self.receive_thread = threading.Thread(target=self.receive_message)
         self.receive_thread.start()
         self.print_sensor_statuses()
+
+    def confirm_central_server_to_node_connection(self):
+        """Run startup configuration tasks."""
+        # Confirm connections with sensor nodes
+        time.sleep(1)
+        self.send_command("CONFIRM_CONNECTION")
+        print("Confirm Connection message sent.")
         
     def update_status(self, sensor_deployment_id, status):
         self.sensor_statuses[sensor_deployment_id] = status
@@ -42,7 +41,7 @@ class CentralServer:
             data = {}
         message = json.dumps({"command": command, **data})
         self.pub_socket.send_string(message)
-        print(f"Published command: {command}")
+        print(f"Published command: {command} on tcp://*:{self.pub_port}")
     
     def receive_message(self):
         while self.running:
@@ -60,7 +59,7 @@ class CentralServer:
                 print(f"ZMQ Error: {e}")
                 self.running = False
     
-    def start_recording(self, duration=20, delay_start_seconds=5, sensor_deployment_id="001", filename="test_video_", additional_info=""):
+    def start_recording(self, duration=10, delay_start_seconds=2, sensor_deployment_id="001", filename="test_video_", additional_info=""):
         """Start the data capture session."""
         # Calculate the future timestamp
         start_timestamp = time.time() + delay_start_seconds
@@ -77,7 +76,7 @@ class CentralServer:
 
     def run(self):
         # Start recording
-        duration = 20
+        duration = 10
         delay_start_seconds = 5
         start_timestamp = self.start_recording(duration=duration, delay_start_seconds=delay_start_seconds)
         end_timestamp = start_timestamp + duration
