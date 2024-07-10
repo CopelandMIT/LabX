@@ -15,35 +15,39 @@ class MQTTCentralServer:
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message
         
+    def run_mqtt_operations(self):
         self.client.connect(self.broker_address)
-        
         self.client.loop_start()
-        
-        time.sleep(1)
-        
+        while True:
+            time.sleep(1)
         
     def on_connect(self, client, userdata, flags, rc):
         if rc == 0:
             print(f"{self.client_id} is connected to the broker!")
-            connection_confrimation_topics = [f"to_central_server/{deployed_sensor_id}/status/confirm_connection_response" for deployed_sensor_id in self.deployed_sensor_ids]
-            update_topics = [f"to_central_server/{deployed_sensor_id}/status/update_from_sensor" for deployed_sensor_id in self.deployed_sensor_ids]
-            finished_recording_topics = [f"to_central_server/{deployed_sensor_id}/status/finished_recording" for deployed_sensor_id in self.deployed_sensor_ids]
-            alerts_topics = [f"to_central_server/{deployed_sensor_id}/status/alerts_from_sensors" for deployed_sensor_id in self.deployed_sensor_ids]
-            all_topics = update_topics + finished_recording_topics + alerts_topics + connection_confrimation_topics
-            self.subscribe_to_topics(all_topics)
+            for deployed_sensor_id in self.deployed_sensor_ids:
+                self.subscribe_to_topics(deployed_sensor_id=deployed_sensor_id)           
         else:
             print(f"{self.client_id} unable to connect to broker. Return code: {rc}")
+    
+    
+    def subscribe_to_topics(self, deployed_sensor_id):
+        '''called in on_connect, to subscribe to all topics for each deployed sensor'''
+        topic_endpoints = ["confirm_connection", "update_from_sensor", "finished_recording", "alerts_from_sensors"]
+        topics = [(f"to_central_server/{deployed_sensor_id}/status/{topic_endpoint}",1 ) for topic_endpoint in topic_endpoints]
+        for topic, qos in topics:
+            self.client.subscribe(topic=topic, qos=qos)
+            print(f"{self.client_id} is subscribed to {topic}")   
+    
+    def confirm_sensor_connections(self):
+        '''called immedately after on_connect or with a UI button'''
+        print(f"Confirming Connections with {self.deployed_sensor_ids}")
+        for deployed_sensor_id in self.deployed_sensor_ids:
+            self.client.publish(f"to_sensor/{deployed_sensor_id}/commands/confirm_connection", qos=2)
+            print(f"Confirmation message sent to {deployed_sensor_id}")
             
     def send_start_command(self, payload):
         self.client.publish("to_sensor/global/commands/start_recording", payload)
         print("sent START_RECORDING command to commands topic")
-    
-    def subscribe_to_topics(self, topics):
-        if isinstance(topics, str):
-            topics = [topics]
-        for topic in topics:
-            self.client.subscribe(topic=topic)
-            print(f"{self.client_id} is subscribed to {topic}")    
         
     def on_message(self, client, userdata, msg):
         # create methods for different message topics and if/elif based on msg.topic.
@@ -71,6 +75,11 @@ class MQTTCentralServer:
 
 def main():
     test_client = MQTTCentralServer()
+    mqtt_thread = threading.Thread(target=test_client.run_mqtt_operations)
+    mqtt_thread.start()
+    time.sleep(2)  # Give some time for MQTT setup and connections
+    test_client.confirm_sensor_connections()
+    time.sleep(1)
     duration = int(input("How many seconds do you want to record for? "))
     time_delay = int(input("how many seconds do you want to delay the start time by? "))
     input("Press enter when ready to record")
@@ -86,6 +95,7 @@ def main():
     stop_event = threading.Event()
     recording_thread = threading.Thread(target=test_client.recording_in_process, args=(stop_event, duration, time_delay))
     recording_thread.start()
+    recording_thread.join()
     
 
 if __name__ == "__main__":
