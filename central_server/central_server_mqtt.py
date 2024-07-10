@@ -14,12 +14,17 @@ class MQTTCentralServer:
         
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message
+        self.stop_event = threading.Event()
         
     def run_mqtt_operations(self):
         self.client.connect(self.broker_address)
         self.client.loop_start()
-        while True:
+        while not self.stop_event.is_set():
             time.sleep(1)
+            
+        # Disconnect Function called.     
+        self.client.loop_stop()
+        self.client.disconnect()
         
     def on_connect(self, client, userdata, flags, rc):
         if rc == 0:
@@ -66,10 +71,9 @@ class MQTTCentralServer:
             print("Recording stopped by user")
         else:
             print("Recording Ended")
-        
+                   
     def disconnect(self):
-        self.client.loop_stop()
-        self.client.disconnect()
+        self.stop_event.set()
         print(f"Client {self.client_id} shutdown.")
         
 
@@ -80,23 +84,42 @@ def main():
     time.sleep(2)  # Give some time for MQTT setup and connections
     test_client.confirm_sensor_connections()
     time.sleep(1)
-    duration = int(input("How many seconds do you want to record for? "))
-    time_delay = int(input("how many seconds do you want to delay the start time by? "))
-    input("Press enter when ready to record")
-    start_time = time.time()+time_delay
     
-    payload = json.dumps({
-    "command": "START_RECORDING", 
-    "start_time": start_time,
-    "duration": duration,
-    "filename": "test" + str(start_time) + "_" + str(duration) + ".avi"})
-    
-    test_client.send_start_command(payload)
-    stop_event = threading.Event()
-    recording_thread = threading.Thread(target=test_client.recording_in_process, args=(stop_event, duration, time_delay))
-    recording_thread.start()
-    recording_thread.join()
-    
+    try:
+        while True:
+            duration = int(input("How many seconds do you want to record for? "))
+            time_delay = int(input("how many seconds do you want to delay the start time by? "))
+            input("Press enter when ready to record")
+            start_time = time.time()+time_delay
+            
+            payload = json.dumps({
+            "delayed_start_timestamp": start_time,
+            "duration": duration,
+            "filename": "test" + str(start_time) + "_" + str(duration),
+            "additional_info": ""})
+            
+            test_client.send_start_command(payload)
+            stop_event = threading.Event()
+            recording_thread = threading.Thread(target=test_client.recording_in_process, args=(stop_event, duration, time_delay))
+            recording_thread.start()
+           
+            time.sleep(duration + time_delay + 1.5)
+                   
+            continue_recording = input("Start another recording? (yes or no)")
+            if continue_recording.lower() not in ("yes", "y"):
+                print("Exiting Recording Sesion")
+                break
+
+    except KeyboardInterrupt:
+        #TODO send command to sensors to stop recording. 
+        print("Program ended by user")
+    finally:
+        test_client.stop_event.set()
+        if recording_thread.is_alive():
+            recording_thread.join()
+        if mqtt_thread.is_alive():
+            mqtt_thread.join()
+        test_client.disconnect()    
 
 if __name__ == "__main__":
     main()
