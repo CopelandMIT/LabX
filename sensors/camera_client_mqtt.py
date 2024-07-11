@@ -14,6 +14,7 @@ class CameraClientMQTT:
         self.is_recording = False
         self.stop_event = threading.Event()
         self.status = "Not Connected"
+        self.HEARTBEAT_INTERVAL = 10
 
 
 # SENSOR MQTT SET UP
@@ -25,9 +26,17 @@ class CameraClientMQTT:
 
         try:
             self.client.connect(self.broker_address, self.port, 60)
-            self.client.loop_start()       
+            self.client.loop_start()   
+            # mqtt thread loop    
+            last_heartbeat_time = time.time()
             while not self.stop_event.is_set():
+                
+                current_time = time.time()
+                if current_time - last_heartbeat_time >= self.HEARTBEAT_INTERVAL:
+                    self.send_heartbeat_to_central_server()
+                    last_heartbeat_time = time.time()
                 time.sleep(1)
+                
         except Exception as e:
             print(f"Failed to connect to Broker: {e}")
         finally:
@@ -74,21 +83,18 @@ class CameraClientMQTT:
         print(f"Central Server to {self.deployed_sensor_id} connection confrimed!")
         self.client.publish(
             f"to_central_server/{self.deployed_sensor_id}/status/confirm_connection", 
-            str({self.deployed_sensor_id}), 
+            json.dumps({"confrim connection": self.deployed_sensor_id}), 
             qos=2)
         self.status = "Ready"
 
 # SEND HEARTBEAT STATUS UPDATE
 
-        
-    def heartbeat_thread(self):
-        while not self.stop_event.is_set():
-            # Send heartbeat message
-            self.client.publish(f"sensor/{self.deployed_sensor_id}/heartbeat",
-                                 json.dumps({self.status}), 
-                                 qos=1)
-            print(f"Heartbeat sent from {self.deployed_sensor_id}")
-            time.sleep(10)  # Send heartbeat every 10 seconds
+    def send_heartbeat_to_central_server(self):
+        self.client.publish(
+            f"to_central_server/{self.deployed_sensor_id}/status/heartbeats_from_sensors",
+            json.dumps({"heartbeat_time" : time.time()}), 
+            qos=1)
+        #print(f"Heartbeat sent from {self.deployed_sensor_id}")
 
 # SEND REQUESTED STATUS UPDATE
 
@@ -96,30 +102,33 @@ class CameraClientMQTT:
         # Send a regular status update about the recording status
         self.status = "Recording" if self.is_recording else "Ready"
         self.client.publish(
-            f"to_central_server/{self.deployed_sensor_id}/status/update_from_sensor",
+            f"to_central_server/{self.deployed_sensor_id}/status/updates_from_sensor",
             json.dumps({"status": self.status}), 
             qos=2)
         
-
-# CAMERA RECORDING
+# START CAMERA RECORDING
 
     def start_recording(self, message_data):
         threading.Thread(target=self.handle_recording, args=(message_data,)).start()
 
     def confirm_start_recording(self):
-        self.client.publish(f"to_central_server/{self.deployed_sensor_id}/status/started_recording",\
-                                 json.dumps({
-                                    "deployed_sensor_id":self.deployed_sensor_id, 
-                                    "message":"Recording Started"}),
-                                qos=2)
+        self.client.publish(
+            f"to_central_server/{self.deployed_sensor_id}/status/started_recording",\
+            json.dumps({
+                "deployed_sensor_id":self.deployed_sensor_id, 
+                "message":"Recording Started"}),
+            qos=2)
 
     def handle_recording(self, message_data):
         self.is_recording = True
         filepath = self._setup_camera(message_data['filename'])
-        self._perform_recording(message_data['duration'], 
-                                message_data['delayed_start_timestamp'], 
-                                filepath)
-        self._cleanup_camera(filepath)
+        self._perform_recording(
+            message_data['duration'], 
+            message_data['delayed_start_timestamp'], 
+            filepath)
+        filesize = self._get_file_size(filepath)
+        self._send_finished_recording_message_to_central_server(filename=message_data['filename'], filesize=filesize)
+        self._cleanup_camera()
 
     def _setup_camera(self, filename):
         self.cap = cv2.VideoCapture(0)
@@ -146,18 +155,20 @@ class CameraClientMQTT:
         print(f"File saved: {filepath}")
         self.is_recording = False
 
-    def _cleanup_camera(self, filepath):
+    def _cleanup_camera(self):
         self.cap.release()
         self.out.release()
-        filesize = self._get_file_size(filepath)
-        self._send_finished_recording_message_to_central_server(filepath, filesize)
+        
+# SEND FINISHED RECORDING METADATA
 
     def _send_finished_recording_message_to_central_server(self, filename, filesize):
-        self.client.publish(f"to_central_server/{self.deployed_sensor_id}/status/finished_recording",
-                            json.dumps({"deployed_sensor_id": self.deployed_sensor_id,
-                                    "filename": filename,
-                                    "file_size": filesize}), 
-                            qos=2)
+        self.client.publish(
+            f"to_central_server/{self.deployed_sensor_id}/status/finished_recording",
+            json.dumps({"deployed_sensor_id": self.deployed_sensor_id,
+                "filename": filename,
+                "file_size": filesize}), 
+            qos=2)
+        print("Sent file metadata to central server.")
 
     def _get_file_size(self, file_path):
         try:
@@ -171,9 +182,14 @@ class CameraClientMQTT:
     def stop_recording(self):
         # Set a flag or a condition to stop the recording thread
         self.stop_event.set()
-        self.client.publish(f"to_central_server/{self.deployed_sensor_id}/status/finished_recording", 
-                            "Recording Terminated by User",
-                            qos=1)
+        self.client.publish(
+            f"to_central_server/{self.deployed_sensor_id}/status/finished_recording", 
+            "Recording Terminated by User",
+            qos=1)
+
+# SEND ALERTS TO CENTRAL SERVER
+# TODO add alerts
+
 
 #MAIN SENSOR TESTING
 
